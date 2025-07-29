@@ -1,8 +1,17 @@
-import random
-
 import pygame
 from random import randint, uniform, choice
 from os.path import join
+import os
+# High score file management
+HIGH_SCORE_FILE = "high_score.txt"
+if not os.path.exists(HIGH_SCORE_FILE):
+    with open(HIGH_SCORE_FILE, 'w') as f:
+        f.write("0")
+
+# Read high score from file
+with open(HIGH_SCORE_FILE, 'r') as f:
+    high_score = int(f.read())
+
 
 class Player(pygame.sprite.Sprite):
     def __init__(self, groups):
@@ -26,18 +35,19 @@ class Player(pygame.sprite.Sprite):
 
 
     def update(self, dt):
-        keys = pygame.key.get_pressed()
-        self.dirt.x = int(keys[pygame.K_RIGHT]) - int(keys[pygame.K_LEFT])
-        self.dirt.y = int(keys[pygame.K_DOWN]) - int(keys[pygame.K_UP])
-        self.dirt = self.dirt.normalize() if self.dirt else self.dirt
-        self.rect.center += self.dirt * self.speed * dt
+        if not isMenu:
+            keys = pygame.key.get_pressed()
+            self.dirt.x = int(keys[pygame.K_RIGHT]) - int(keys[pygame.K_LEFT])
+            self.dirt.y = int(keys[pygame.K_DOWN]) - int(keys[pygame.K_UP])
+            self.dirt = self.dirt.normalize() if self.dirt else self.dirt
+            self.rect.center += self.dirt * self.speed * dt
 
-        resent_keys = pygame.key.get_just_pressed()
-        if resent_keys[pygame.K_SPACE] and self.can_shoot:
-            Laser((all_sprites,laser_sprites), laser_surf, self.rect.midtop)
-            self.can_shoot = False
-            self.shoot_timer = pygame.time.get_ticks()
-            laser_sound.play()
+            resent_keys = pygame.key.get_just_pressed()
+            if resent_keys[pygame.K_SPACE] and self.can_shoot:
+                Laser((all_sprites,laser_sprites), laser_surf, self.rect.midtop)
+                self.can_shoot = False
+                self.shoot_timer = pygame.time.get_ticks()
+                laser_sound.play()
 
         self.lazer_timer()
 
@@ -109,10 +119,63 @@ def collision_control():
             Animation_Explosion(explosion_frames, laser.rect.midtop, all_sprites)
 
 def display_score():
-    current_time = pygame.time.get_ticks()//100
-    score_surf = font.render(str(current_time), True, (240, 240, 240))
+    score = (pygame.time.get_ticks() - game_started_time) // 100
+    score_surf = font.render(str(score), True, (240, 240, 240))
     score_rect = score_surf.get_frect(midbottom = (WIND_WIDTH/2, WIND_HEIGHT-50))
     screen.blit(score_surf,score_rect)
+    return score
+
+def show_menu():
+    screen.fill('#3a2e4f')
+    all_sprites.draw(screen)
+
+    # High score text
+    high_surf = font.render(f'High Score: {high_score}', True, (255, 255, 255))
+    high_rect = high_surf.get_frect(midtop=(WIND_WIDTH / 2, 100))
+    screen.blit(high_surf, high_rect)
+
+    # Prompt to start
+    prompt_surf = font.render('Press ENTER to Start', True, (200, 200, 200))
+    prompt_rect = prompt_surf.get_frect(midtop=(WIND_WIDTH / 2, 160))
+    screen.blit(prompt_surf, prompt_rect)
+
+    pygame.display.update()
+
+def check_and_save_highscore(score):
+    global high_score
+    if score > high_score:
+        high_score = score
+        with open(HIGH_SCORE_FILE, 'w') as f:
+            f.write(str(score))
+
+def show_game_over(score):
+    screen.fill('#3a2e4f')
+    all_sprites.draw(screen)
+
+    gameover_surf = font.render("Game Over", True, (255, 0, 0))
+    score_surf = font.render(f"Your Score: {score}", True, (240, 240, 240))
+    high_surf = font.render(f"High Score: {high_score}", True, (255, 255, 255))
+    restart_surf = font.render("Press R to Restart or ESC to Quit", True, (200, 200, 200))
+
+    screen.blit(gameover_surf, gameover_surf.get_frect(center=(WIND_WIDTH / 2, 150)))
+    screen.blit(score_surf, score_surf.get_frect(center=(WIND_WIDTH / 2, 210)))
+    screen.blit(high_surf, high_surf.get_frect(center=(WIND_WIDTH / 2, 260)))
+    screen.blit(restart_surf, restart_surf.get_frect(center=(WIND_WIDTH / 2, 320)))
+
+    pygame.display.update()
+
+def restart_game():
+    global player, isMenu, waiting, isRunning
+    all_sprites.empty()
+    meteor_sprites.empty()
+    laser_sprites.empty()
+    for _ in range(20):
+        Stars(all_sprites, star_surf)
+    player = Player(all_sprites)
+    player.can_shoot = True
+    isMenu = True
+    waiting = False
+    isRunning = True
 
 # Screen setup
 WIND_WIDTH, WIND_HEIGHT =1000, 700
@@ -120,6 +183,7 @@ pygame.init()
 screen = pygame.display.set_mode((WIND_WIDTH,WIND_HEIGHT))
 pygame.display.set_caption("Space Survivor game")
 isRunning = True
+isMenu = True
 clock = pygame.time.Clock()
 
 # Plain Surface
@@ -156,27 +220,58 @@ player = Player(all_sprites)
 meteor_event = pygame.event.custom_type()
 pygame.time.set_timer(meteor_event,500)
 
-# Display
-while isRunning:
-    dt = clock.tick() / 1000
+while True:
+    game_started_time = 0
 
-    # event Loop
-    for event in pygame.event.get():
-        if event.type == pygame.QUIT:
-            isRunning = False
-        if event.type == meteor_event:
-            Meteor(meteor_surf,(all_sprites,meteor_sprites))
+    # Display
+    while isRunning:
+        dt = clock.tick() / 1000
 
+        # event Loop
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                isRunning = False
+                pygame.quit()
+                exit()
 
-    # Updating Game
-    all_sprites.update(dt)
+            if isMenu and event.type == pygame.KEYDOWN and event.key == pygame.K_RETURN:
+                isMenu = False
+                game_started_time = pygame.time.get_ticks()
 
-    # Painting Game
-    screen.fill('#3a2e4f')
-    display_score()
-    all_sprites.draw(screen)
+            if not isMenu and event.type == meteor_event:
+                Meteor(meteor_surf,(all_sprites,meteor_sprites))
 
-    collision_control()
-    pygame.display.update()
+        # Display Main menu
+        if isMenu:
+            all_sprites.update(dt)
+            show_menu()
+            continue
 
-pygame.exit()
+        # Updating Game
+        all_sprites.update(dt)
+
+        # Painting Game
+        screen.fill('#3a2e4f')
+        display_score()
+        all_sprites.draw(screen)
+
+        collision_control()
+        pygame.display.update()
+
+    # Game ends and Highscore is compared
+    final_score = (pygame.time.get_ticks() - game_started_time) // 100
+    check_and_save_highscore(final_score)
+    show_game_over(final_score)
+
+    # waiting loop
+    waiting = True
+    while waiting:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT or (event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE):
+                waiting = False
+                isRunning = False
+                pygame.quit()
+                exit()
+
+            if event.type == pygame.KEYDOWN and event.key == pygame.K_r:
+                restart_game()
